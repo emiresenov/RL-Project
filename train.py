@@ -8,6 +8,9 @@ from utils import preprocess
 from evaluate import evaluate_policy
 from dqn import DQN, ReplayMemory, optimize
 
+import copy # (Added) For Q' = Q step
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
@@ -30,6 +33,7 @@ if __name__ == '__main__':
     # Initialize deep Q-networks.
     dqn = DQN(env_config=env_config).to(device)
     # TODO: Create and initialize target Q-network.
+    target_dqn = DQN(env_config=env_config).to(device)
 
     # Create replay memory.
     memory = ReplayMemory(env_config['memory_size'])
@@ -40,6 +44,9 @@ if __name__ == '__main__':
     # Keep track of best evaluation mean return achieved so far.
     best_mean_return = -float("Inf")
 
+    # (Added) Keep track of step count.
+    steps = 0
+
     for episode in range(env_config['n_episodes']):
         terminated = False
         obs, info = env.reset()
@@ -47,23 +54,35 @@ if __name__ == '__main__':
         obs = preprocess(obs, env=args.env).unsqueeze(0)
         
         while not terminated:
+            steps += 1
+
             # TODO: Get action from DQN.
-            action = None
+            action = dqn.act(obs).item()
 
             # Act in the true environment.
-            obs, reward, terminated, truncated, info = env.step(action)
+            next_obs, reward, terminated, truncated, info = env.step(action)
 
             # Preprocess incoming observation.
             if not terminated:
-                obs = preprocess(obs, env=args.env).unsqueeze(0)
+                next_obs = preprocess(next_obs, env=args.env).unsqueeze(0)
             
             # TODO: Add the transition to the replay memory. Remember to convert
             #       everything to PyTorch tensors!
+            action_tensor = torch.tensor(action, device=device).reshape(1)
+            reward_tensor = torch.tensor(reward, device=device).float().reshape(1) 
+            memory.push(obs, action_tensor, next_obs, reward_tensor)
 
             # TODO: Run DQN.optimize() every env_config["train_frequency"] steps.
+            if steps % env_config["train_frequency"] == 0:
+              optimize(dqn, target_dqn, memory, optimizer)
 
             # TODO: Update the target network every env_config["target_update_frequency"] steps.
-
+            if steps & env_config["target_update_frequency"] == 0:
+              target_dqn = copy.deepcopy(dqn)
+            
+            # (Added) Update obs
+            obs = next_obs
+            
         # Evaluate the current agent.
         if episode % args.evaluate_freq == 0:
             mean_return = evaluate_policy(dqn, env, env_config, args, n_episodes=args.evaluation_episodes)
@@ -74,7 +93,7 @@ if __name__ == '__main__':
                 best_mean_return = mean_return
 
                 print('Best performance so far! Saving model.')
-                torch.save(dqn, f'models/{args.env}_best.pt')
+                torch.save(dqn, f'/content/drive/MyDrive/RL-Project/models/{args.env}_best.pt')
         
     # Close environment after training is completed.
     env.close()

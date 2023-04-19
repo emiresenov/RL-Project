@@ -24,8 +24,8 @@ class ReplayMemory:
 
     def sample(self, batch_size):
         """
-        Samples batch_size transitions from the replay memory and returns a tuple
-            (obs, action, next_obs, reward)
+        Samples batch_size transitions from the replay memory and returns 
+        a tuple (obs, action, next_obs, reward)
         """
         sample = random.sample(self.memory, batch_size)
         return tuple(zip(*sample))
@@ -49,6 +49,8 @@ class DQN(nn.Module):
         self.relu = nn.ReLU()
         self.flatten = nn.Flatten()
 
+        self.eps = self.eps_start # Extra param for annealing
+
     def forward(self, x):
         """Runs the forward pass of the NN depending on architecture."""
         x = self.relu(self.fc1(x))
@@ -63,8 +65,39 @@ class DQN(nn.Module):
         #       For example, if the state dimension is 4 and the batch size is 32,
         #       the input would be a [32, 4] tensor and the output a [32, 1] tensor.
         # TODO: Implement epsilon-greedy exploration.
+        ''' 
+        Own comments
+        - Observation is what we have called state in previous notebooks,
+          it is the first argument from env.reset()
+        - Exploit is a boolean flag. If True then we don't explore and only
+          return optimal action-values
+        - Epsilon should be linearly decreased over as many steps as the
+          anneal_length parameter. Formula: decrease by 
+          (eps_start - eps_end) / anneal_length every iteration
+        - To find greedy action, forward pass the state (observation). The nn
+          will approximate the optimal action-value function
+        ''' 
 
-        raise NotImplmentedError
+        # Linear annealing
+        if self.eps > self.eps_end:
+          self.eps -= (self.eps_start - self.eps_end) / self.anneal_length
+
+        # 0-1 random uniform sample
+        U = random.random() 
+
+        # Run forward pass and return optimal actions
+        if exploit or U > self.eps:
+          action_values = self.forward(observation)
+          return torch.argmax(action_values, dim=1)
+        else: 
+          # Return random actions
+          return torch.randint(
+            low=0, 
+            high=self.n_actions, 
+            size=(observation.size(0), 1)
+          )
+
+
 
 def optimize(dqn, target_dqn, memory, optimizer):
     """This function samples a batch from the replay buffer and optimizes the Q-network."""
@@ -76,13 +109,62 @@ def optimize(dqn, target_dqn, memory, optimizer):
     #       four tensors in total: observations, actions, next observations and rewards.
     #       Remember to move them to GPU if it is available, e.g., by using Tensor.to(device).
     #       Note that special care is needed for terminal transitions!
+    '''
+    Own comments:
+    - Sample returns a 4-tuple containing [0]: Observations, [1]: actions,
+      [2]: Next observations, [3] Rewards (see TEST.py).
+    - For terminal transition, the next_observation is never preprocessed (by 
+      default as provided by the skeleton), thus we can't concatenate the
+      non-tensors with all the other tensors, will cause error.
+    '''
+    
+    sample = memory.sample(batch_size=dqn.batch_size) # Sample from memory
+    observations = torch.cat(sample[0]).to(device) # Observations tensor
+    actions = torch.cat(sample[1]).to(device) # Actions tensor
+    rewards = torch.cat(sample[3]).to(device) # Rewards tensor
+    
+    # Special handling for next_observations with terminal states
+    next_non_terminal = [] # Array for non-terminal next_observations
+    terminal_states = [] # Bool array terminal and non-terminal (used later)
+    for i in sample[2]:
+      if torch.is_tensor(i):
+        next_non_terminal.append(i)
+        terminal_states.append(False)
+      else:
+        terminal_states.append(True)
+
+    # Next observations tensor
+    next_observations = torch.cat(next_non_terminal).to(device)
 
     # TODO: Compute the current estimates of the Q-values for each state-action
     #       pair (s,a). Here, torch.gather() is useful for selecting the Q-values
     #       corresponding to the chosen actions.
+    '''
+    Own comments:
+    - When we forward pass we are given the predicted Q-values for every action.
+      We use gather to select the chosen action to the Q-values.
+    '''
+    action_values = dqn.forward(observations)
+    q_values = torch.gather(action_values, 1, actions.unsqueeze(dim=1))
     
+
     # TODO: Compute the Q-value targets. Only do this for non-terminal transitions!
+    target_action_values = target_dqn.forward(next_observations)
+
+    # Extract max values and convert to list
+    max_target_values = torch.max(target_action_values, dim=1)[0].tolist()
+
+    # Insert zero values for terminal state positions
+    for i in range(len(terminal_states)):
+      if terminal_states[i]:
+        max_target_values.insert(i, 0)
     
+    # Create targets tensor
+    targets = torch.tensor(max_target_values).to(device)
+
+    # Calculate Q value targets
+    q_value_targets = rewards + target_dqn.gamma * targets
+
     # Compute loss.
     loss = F.mse_loss(q_values.squeeze(), q_value_targets)
 
