@@ -185,3 +185,16 @@ Episode 4576/5000: 10.8
 Episode 4601/5000: 11.6
 Episode 4626/5000: 10.4
 Episode 4651/5000: -3.2
+Episode 4676/5000: 5.2
+Episode 4701/5000: 10.6
+Episode 4726/5000: 12.6
+Episode 4751/5000: 10.8
+Episode 4776/5000: 15.2
+Episode 4801/5000: 14.2
+Episode 4826/5000: 8.6
+Episode 4851/5000: 11.0
+Episode 4876/5000: 11.6
+Episode 4901/5000: 5.8
+Episode 4926/5000: 8.4
+Episode 4951/5000: 14.2
+Episode 4976/5000: 7.0
