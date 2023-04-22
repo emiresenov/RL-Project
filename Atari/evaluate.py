@@ -1,3 +1,4 @@
+evaluate.py
 import argparse
 
 import gymnasium as gym
@@ -58,11 +59,25 @@ if __name__ == '__main__':
 
     # Initialize environment and config
     env = gym.make(args.env)
+    env = gym.wrappers.AtariPreprocessing(
+      env, 
+      screen_size=84, 
+      grayscale_obs=True, 
+      frame_skip=1, 
+      noop_max=30
+    )
     env_config = ENV_CONFIGS[args.env]
 
     if args.save_video:
         env = gym.make(args.env, render_mode='rgb_array')
-        env = gym.wrappers.RecordVideo(env, './Atari/videos/', episode_trigger=lambda episode_id: True)
+        env = gym.wrappers.AtariPreprocessing(
+          env, 
+          screen_size=84, 
+          grayscale_obs=True, 
+          frame_skip=1, 
+          noop_max=30
+        )
+        env = gym.wrappers.RecordVideo(env, './drive/MyDrive/RL-Project/videos/', episode_trigger=lambda episode_id: True)
 
     # Load model from provided path.
     dqn = torch.load(args.path, map_location=device)
